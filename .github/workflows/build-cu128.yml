@@ -108,6 +108,13 @@ jobs:
           git config --global url."https://github.com/".insteadOf "git@github.com:"
           git clone https://github.com/microsoft/TRELLIS.2.git --recursive
 
+      - name: Patch source for MSVC compatibility
+        shell: powershell
+        run: |
+          $file = "TRELLIS.2\o-voxel\src\convert\flexible_dual_grid.cpp"
+          (Get-Content $file) -replace '(\d+\.?\d*[eE]?[+-]?\d*)d\b', '$1' | Set-Content $file
+          Write-Host "Patched $file for MSVC compatibility"
+
       - name: Build wheel
         shell: cmd
         run: |
