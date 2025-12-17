@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ['3.10', '3.11', '3.12']
+        python: ['3.10']
 
     steps:
       - uses: actions/checkout@v4
@@ -78,7 +78,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ['3.10', '3.11', '3.12']
+        python: ['3.10']
 
     steps:
       - uses: actions/checkout@v4
@@ -111,11 +111,15 @@ jobs:
       - name: Patch source for MSVC compatibility
         shell: powershell
         run: |
+          # Fix 1: Remove 'd' suffix from double literals (preserve Eigen types like Vector2d)
           $file = "TRELLIS.2\o-voxel\src\convert\flexible_dual_grid.cpp"
-          # Remove 'd' suffix from double literals (e.g., 1e-6d -> 1e-6, 0.0d -> 0.0)
-          # Use negative lookbehind to avoid matching Eigen types like Vector2d, Matrix3d
           (Get-Content $file) -replace '(?<![a-zA-Z_])(\d+\.?\d*(?:[eE][+-]?\d+)?)d\b', '$1' | Set-Content $file
-          Write-Host "Patched $file for MSVC compatibility"
+
+          # Fix 2: Cast size_t to int64_t in torch::zeros calls (narrowing conversion error)
+          foreach ($f in @("TRELLIS.2\o-voxel\src\io\filter_neighbor.cpp", "TRELLIS.2\o-voxel\src\io\filter_parent.cpp")) {
+            (Get-Content $f) -replace '\{N, C\}', '{(int64_t)N, (int64_t)C}' | Set-Content $f
+          }
+          Write-Host "Patched source files for MSVC compatibility"
 
       - name: Build wheel
         shell: cmd
