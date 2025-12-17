@@ -59,7 +59,7 @@ jobs:
           CUDA_HOME: /usr/local/cuda-12.8
         run: |
           git config --global url."https://github.com/".insteadOf "git@github.com:"
-          git clone https://github.com/microsoft/TRELLIS.2.git
+          git clone https://github.com/microsoft/TRELLIS.2.git --recursive
           cd TRELLIS.2/o-voxel
           export TORCH_CUDA_ARCH_LIST="${{ env.TORCH_CUDA_ARCH_LIST }}"
           pip install --no-build-isolation .
@@ -106,7 +106,7 @@ jobs:
       - name: Clone TRELLIS.2
         run: |
           git config --global url."https://github.com/".insteadOf "git@github.com:"
-          git clone https://github.com/microsoft/TRELLIS.2.git
+          git clone https://github.com/microsoft/TRELLIS.2.git --recursive
 
       - name: Build wheel
         shell: cmd
