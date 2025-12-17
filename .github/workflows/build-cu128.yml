@@ -116,8 +116,23 @@ jobs:
           (Get-Content $file) -replace '(?<![a-zA-Z_])(\d+\.?\d*(?:[eE][+-]?\d+)?)d\b', '$1' | Set-Content $file
 
           # Fix 2: Cast size_t to int64_t in torch::zeros calls (narrowing conversion error)
+          # Debug: show lines before patching
+          Write-Host "=== BEFORE PATCHING ==="
           foreach ($f in @("TRELLIS.2\o-voxel\src\io\filter_neighbor.cpp", "TRELLIS.2\o-voxel\src\io\filter_parent.cpp")) {
-            (Get-Content $f) -replace '\{N, C\}', '{(int64_t)N, (int64_t)C}' | Set-Content $f
+            Write-Host "--- $f ---"
+            Select-String -Path $f -Pattern "torch::zeros" | ForEach-Object { Write-Host $_.Line }
+          }
+
+          # Apply patches - match any {VAR, VAR} pattern in torch::zeros calls
+          foreach ($f in @("TRELLIS.2\o-voxel\src\io\filter_neighbor.cpp", "TRELLIS.2\o-voxel\src\io\filter_parent.cpp")) {
+            (Get-Content $f) -replace 'torch::zeros\(\{(\w+),\s*(\w+)\}', 'torch::zeros({(int64_t)$1, (int64_t)$2}' | Set-Content $f
+          }
+
+          # Debug: show lines after patching
+          Write-Host "=== AFTER PATCHING ==="
+          foreach ($f in @("TRELLIS.2\o-voxel\src\io\filter_neighbor.cpp", "TRELLIS.2\o-voxel\src\io\filter_parent.cpp")) {
+            Write-Host "--- $f ---"
+            Select-String -Path $f -Pattern "torch::zeros" | ForEach-Object { Write-Host $_.Line }
           }
           Write-Host "Patched source files for MSVC compatibility"
 
