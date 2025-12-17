@@ -112,7 +112,9 @@ jobs:
         shell: powershell
         run: |
           $file = "TRELLIS.2\o-voxel\src\convert\flexible_dual_grid.cpp"
-          (Get-Content $file) -replace '(\d+\.?\d*[eE]?[+-]?\d*)d\b', '$1' | Set-Content $file
+          # Remove 'd' suffix from double literals (e.g., 1e-6d -> 1e-6, 0.0d -> 0.0)
+          # Use negative lookbehind to avoid matching Eigen types like Vector2d, Matrix3d
+          (Get-Content $file) -replace '(?<![a-zA-Z_])(\d+\.?\d*(?:[eE][+-]?\d+)?)d\b', '$1' | Set-Content $file
           Write-Host "Patched $file for MSVC compatibility"
 
       - name: Build wheel
