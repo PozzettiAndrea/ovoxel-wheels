@@ -168,7 +168,7 @@ jobs:
           for whl in artifacts/*.whl; do
             if [ -f "$whl" ]; then
               basename=$(basename "$whl")
-              newname=$(echo "$basename" | sed "s/-cp/+cu${{ env.CUDA_SHORT }}-cp/")
+              newname="$basename"
               cp "$whl" "wheels/$newname"
             fi
           done
