@@ -63,6 +63,7 @@ jobs:
           git clone https://github.com/microsoft/TRELLIS.2.git --recursive
           cd TRELLIS.2/o-voxel
           export TORCH_CUDA_ARCH_LIST="${{ env.TORCH_CUDA_ARCH_LIST }}"
+          export CXXFLAGS="-D_GLIBCXX_USE_CXX11_ABI=1"
           pip install --no-build-isolation .
           python setup.py bdist_wheel
           ls -la dist/
