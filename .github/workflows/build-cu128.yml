@@ -115,24 +115,15 @@ jobs:
           $file = "TRELLIS.2\o-voxel\src\convert\flexible_dual_grid.cpp"
           (Get-Content $file) -replace '(?<![a-zA-Z_])(\d+\.?\d*(?:[eE][+-]?\d+)?)d\b', '$1' | Set-Content $file
 
-          # Fix 2: Cast size_t to int64_t in torch::zeros calls (narrowing conversion error)
-          $ioFiles = @("TRELLIS.2\o-voxel\src\io\filter_neighbor.cpp", "TRELLIS.2\o-voxel\src\io\filter_parent.cpp", "TRELLIS.2\o-voxel\src\io\svo.cpp")
-
-          Write-Host "=== BEFORE PATCHING ==="
-          foreach ($f in $ioFiles) {
-            Write-Host "--- $f ---"
-            Select-String -Path $f -Pattern "torch::zeros" | ForEach-Object { Write-Host $_.Line }
+          # Fix 2: Cast size_t to int64_t in torch calls (narrowing conversion error)
+          # Pattern 1: torch::zeros({VAR1, VAR2}, ...) in filter_*.cpp
+          foreach ($f in @("TRELLIS.2\o-voxel\src\io\filter_neighbor.cpp", "TRELLIS.2\o-voxel\src\io\filter_parent.cpp")) {
+            (Get-Content $f) -replace 'torch::zeros\(\{(\w+),\s*(\w+)\}', 'torch::zeros({(int64_t)$1, (int64_t)$2}' | Set-Content $f
           }
+          # Pattern 2: torch::from_blob(..., {expr.size()}, ...) in svo.cpp
+          $svoFile = "TRELLIS.2\o-voxel\src\io\svo.cpp"
+          (Get-Content $svoFile) -replace '\{(\w+)\.size\(\)\}', '{(int64_t)$1.size()}' | Set-Content $svoFile
 
-          foreach ($f in $ioFiles) {
-            (Get-Content $f) -replace 'torch::zeros\(\{(\w+)', 'torch::zeros({(int64_t)$1' | Set-Content $f
-          }
-
-          Write-Host "=== AFTER PATCHING ==="
-          foreach ($f in $ioFiles) {
-            Write-Host "--- $f ---"
-            Select-String -Path $f -Pattern "torch::zeros" | ForEach-Object { Write-Host $_.Line }
-          }
           Write-Host "Patched source files for MSVC compatibility"
 
       - name: Build wheel
