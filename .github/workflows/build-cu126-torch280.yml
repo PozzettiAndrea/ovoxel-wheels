@@ -1,4 +1,4 @@
-name: Build O-Voxel CUDA 12.4
+name: Build O-Voxel CUDA 12.6 + PyTorch 2.8.0
 
 on:
   push:
@@ -7,10 +7,11 @@ on:
   workflow_dispatch:
 
 env:
-  CUDA_VERSION: '12.4'
-  CUDA_SHORT: '124'
-  PYTORCH_VERSION: '2.4.1'
-  TORCH_CUDA_ARCH_LIST: '7.5;8.0;8.6;8.9;9.0'
+  CUDA_VERSION: '12.6'
+  CUDA_SHORT: '126'
+  PYTORCH_VERSION: '2.8.0'
+  TORCH_SHORT: '280'
+  TORCH_CUDA_ARCH_LIST: '7.5;8.0;8.6;8.9;9.0;10.0;12.0'
   MAX_JOBS: 4
 
 jobs:
@@ -19,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ['3.10', '3.11', '3.12']
+        python: ['3.10', '3.11', '3.12', '3.13']
 
     steps:
       - uses: actions/checkout@v4
@@ -40,23 +41,23 @@ jobs:
           sudo dpkg -i cuda-keyring_1.1-1_all.deb
           sudo apt-get update
           sudo apt-get install -y \
-            cuda-nvcc-12-4 \
-            cuda-cudart-dev-12-4 \
-            libcublas-dev-12-4 \
-            libcusparse-dev-12-4 \
-            libcusolver-dev-12-4
-          echo "/usr/local/cuda-12.4/bin" >> $GITHUB_PATH
-          echo "CUDA_HOME=/usr/local/cuda-12.4" >> $GITHUB_ENV
+            cuda-nvcc-12-6 \
+            cuda-cudart-dev-12-6 \
+            libcublas-dev-12-6 \
+            libcusparse-dev-12-6 \
+            libcusolver-dev-12-6
+          echo "/usr/local/cuda-12.6/bin" >> $GITHUB_PATH
+          echo "CUDA_HOME=/usr/local/cuda-12.6" >> $GITHUB_ENV
 
       - name: Install PyTorch and build tools
         run: |
-          pip install --no-cache-dir torch==${{ env.PYTORCH_VERSION }} --index-url https://download.pytorch.org/whl/cu124
+          pip install --no-cache-dir torch==${{ env.PYTORCH_VERSION }} --index-url https://download.pytorch.org/whl/cu126
           pip install wheel setuptools ninja numpy
 
       - name: Clone TRELLIS.2 and build o-voxel
         env:
           FORCE_CUDA: "1"
-          CUDA_HOME: /usr/local/cuda-12.4
+          CUDA_HOME: /usr/local/cuda-12.6
         run: |
           git config --global url."https://github.com/".insteadOf "git@github.com:"
           git clone https://github.com/microsoft/TRELLIS.2.git --recursive
@@ -69,7 +70,7 @@ jobs:
       - name: Upload wheel
         uses: actions/upload-artifact@v4
         with:
-          name: ovoxel-linux-cu${{ env.CUDA_SHORT }}-py${{ matrix.python }}
+          name: ovoxel-linux-cu${{ env.CUDA_SHORT }}-torch${{ env.TORCH_SHORT }}-py${{ matrix.python }}
           path: TRELLIS.2/o-voxel/dist/*.whl
           retention-days: 90
 
@@ -78,7 +79,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ['3.10', '3.11', '3.12']
+        python: ['3.10', '3.11', '3.12', '3.13']
 
     steps:
       - uses: actions/checkout@v4
@@ -91,16 +92,16 @@ jobs:
       - name: Download and install CUDA toolkit
         shell: powershell
         run: |
-          $installerUrl = "https://developer.download.nvidia.com/compute/cuda/12.4.1/network_installers/cuda_12.4.1_windows_network.exe"
+          $installerUrl = "https://developer.download.nvidia.com/compute/cuda/12.6.3/network_installers/cuda_12.6.3_windows_network.exe"
           Invoke-WebRequest -Uri $installerUrl -OutFile "cuda_installer.exe" -UseBasicParsing
-          Start-Process -FilePath "cuda_installer.exe" -ArgumentList "-s", "-n", "nvcc_12.4", "cudart_12.4", "cublas_12.4", "cublas_dev_12.4", "cusparse_12.4", "cusparse_dev_12.4", "cusolver_12.4", "cusolver_dev_12.4", "thrust_12.4" -Wait -NoNewWindow
-          $cudaPath = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4"
+          Start-Process -FilePath "cuda_installer.exe" -ArgumentList "-s", "-n", "nvcc_12.6", "cudart_12.6", "cublas_12.6", "cublas_dev_12.6", "cusparse_12.6", "cusparse_dev_12.6", "cusolver_12.6", "cusolver_dev_12.6", "thrust_12.6" -Wait -NoNewWindow
+          $cudaPath = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6"
           echo "$cudaPath\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           echo "CUDA_HOME=$cudaPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Install PyTorch and build tools
         run: |
-          pip install torch==${{ env.PYTORCH_VERSION }} --index-url https://download.pytorch.org/whl/cu124
+          pip install torch==${{ env.PYTORCH_VERSION }} --index-url https://download.pytorch.org/whl/cu126
           pip install wheel setuptools ninja numpy
 
       - name: Clone TRELLIS.2
@@ -130,9 +131,9 @@ jobs:
         shell: cmd
         run: |
           cd TRELLIS.2\o-voxel
-          set "CUDA_HOME=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4"
+          set "CUDA_HOME=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6"
           set FORCE_CUDA=1
-          set TORCH_CUDA_ARCH_LIST=7.5;8.0;8.6;8.9;9.0
+          set TORCH_CUDA_ARCH_LIST=7.5;8.0;8.6;8.9;9.0;10.0;12.0
           pip install --no-build-isolation .
           python setup.py bdist_wheel
           dir dist
@@ -140,7 +141,7 @@ jobs:
       - name: Upload wheel
         uses: actions/upload-artifact@v4
         with:
-          name: ovoxel-windows-cu${{ env.CUDA_SHORT }}-py${{ matrix.python }}
+          name: ovoxel-windows-cu${{ env.CUDA_SHORT }}-torch${{ env.TORCH_SHORT }}-py${{ matrix.python }}
           path: TRELLIS.2/o-voxel/dist/*.whl
           retention-days: 90
 
@@ -175,10 +176,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: cu${{ env.CUDA_SHORT }}
-          name: O-Voxel CUDA ${{ env.CUDA_VERSION }}
+          tag_name: cu${{ env.CUDA_SHORT }}-torch${{ env.TORCH_SHORT }}
+          name: O-Voxel CUDA ${{ env.CUDA_VERSION }} + PyTorch ${{ env.PYTORCH_VERSION }}
           body: |
-            Pre-built O-Voxel wheels for CUDA ${{ env.CUDA_VERSION }}
+            Pre-built O-Voxel wheels for CUDA ${{ env.CUDA_VERSION }} + PyTorch ${{ env.PYTORCH_VERSION }}
 
             **Install:**
             ```bash
@@ -187,40 +188,3 @@ jobs:
           files: wheels/*.whl
           fail_on_unmatched_files: true
           make_latest: false
-
-  update-index:
-    needs: [release]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-
-      - name: Generate index.html
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p wheels
-          REPO="${{ github.repository }}"
-          echo '<!DOCTYPE html><html><body>' > wheels/index.html
-          for tag in cu124 cu128; do
-            if gh release view "$tag" --json assets --jq '.assets[].name' 2>/dev/null | grep -q '.whl'; then
-              gh release view "$tag" --json assets --jq '.assets[].name' | while read -r wheel; do
-                sha256=$(gh release download "$tag" --pattern "$wheel" --output - 2>/dev/null | sha256sum | cut -d' ' -f1)
-                echo "<a href=\"https://github.com/$REPO/releases/download/$tag/$wheel#sha256=$sha256\">$wheel</a><br>" >> wheels/index.html
-              done
-            fi
-          done
-          echo '</body></html>' >> wheels/index.html
-
-      - name: Commit index
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add wheels/
-          git commit -m "Update index" || echo "No changes"
-          git pull --rebase origin main || true
-          git push
