@@ -62,6 +62,10 @@ jobs:
           git config --global url."https://github.com/".insteadOf "git@github.com:"
           git clone https://github.com/microsoft/TRELLIS.2.git --recursive
           cd TRELLIS.2/o-voxel
+          # Remove git URL dependencies from pyproject.toml
+          # These cause pip to try cloning CuMesh/FlexGEMM even when already installed
+          sed -i '/cumesh@/d' pyproject.toml
+          sed -i '/flex_gemm@/d' pyproject.toml
           export TORCH_CUDA_ARCH_LIST="${{ env.TORCH_CUDA_ARCH_LIST }}"
           export CXXFLAGS="-D_GLIBCXX_USE_CXX11_ABI=1"
           pip install --no-build-isolation .
@@ -127,6 +131,14 @@ jobs:
           (Get-Content $svoFile) -replace '\{(\w+)\.size\(\)\}', '{(int64_t)$1.size()}' | Set-Content $svoFile
 
           Write-Host "Patched source files for MSVC compatibility"
+
+      - name: Patch pyproject.toml
+        shell: bash
+        run: |
+          cd TRELLIS.2/o-voxel
+          # Remove git URL dependencies from pyproject.toml
+          sed -i '/cumesh@/d' pyproject.toml
+          sed -i '/flex_gemm@/d' pyproject.toml
 
       - name: Build wheel
         shell: cmd
