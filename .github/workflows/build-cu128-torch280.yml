@@ -57,23 +57,55 @@ jobs:
           pip install --no-cache-dir torch==${{ env.PYTORCH_VERSION }} --index-url https://download.pytorch.org/whl/cu128
           pip install wheel setuptools ninja numpy
 
-      - name: Clone TRELLIS.2 and build o-voxel
+      - name: Clone TRELLIS.2
+        run: |
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          git clone https://github.com/microsoft/TRELLIS.2.git --recursive
+
+      - name: Patch postprocess.py for batched BVH queries
+        run: |
+          cd TRELLIS.2/o-voxel
+          python3 << 'PATCH_SCRIPT'
+          import re
+          with open('o_voxel/postprocess.py', 'r') as f:
+              content = f.read()
+          batched_func = '''
+
+          def _batched_unsigned_distance(bvh, positions, batch_size=500000, return_uvw=False):
+              """Batch unsigned_distance queries to avoid GPU kernel timeout. See: https://github.com/PozzettiAndrea/ComfyUI-TRELLIS2/issues/19"""
+              N = positions.shape[0]
+              if N <= batch_size:
+                  return bvh.unsigned_distance(positions, return_uvw=return_uvw)
+              distances_list, face_id_list, uvw_list = [], [], [] if return_uvw else None
+              for i in range(0, N, batch_size):
+                  d, f, u = bvh.unsigned_distance(positions[i:min(i+batch_size, N)], return_uvw=return_uvw)
+                  distances_list.append(d)
+                  face_id_list.append(f)
+                  if return_uvw: uvw_list.append(u)
+              import torch
+              return torch.cat(distances_list), torch.cat(face_id_list), torch.cat(uvw_list) if return_uvw else None
+
+          '''
+          content = re.sub(r'(import cumesh\n)', r'\1' + batched_func, content)
+          content = content.replace('_, face_id, uvw = bvh.unsigned_distance(valid_pos, return_uvw=True)',
+                                    '_, face_id, uvw = _batched_unsigned_distance(bvh, valid_pos, return_uvw=True)')
+          with open('o_voxel/postprocess.py', 'w') as f:
+              f.write(content)
+          print("Patched postprocess.py for batched BVH queries")
+          PATCH_SCRIPT
+
+      - name: Build o-voxel wheel
         env:
           FORCE_CUDA: "1"
           CUDA_HOME: /usr/local/cuda-12.8
         run: |
-          git config --global url."https://github.com/".insteadOf "git@github.com:"
-          git clone https://github.com/microsoft/TRELLIS.2.git --recursive
           cd TRELLIS.2/o-voxel
-          # Remove git URL dependencies from pyproject.toml
-          # These cause pip to try cloning CuMesh/FlexGEMM even when already installed
           sed -i '/cumesh@/d' pyproject.toml
           sed -i '/flex_gemm@/d' pyproject.toml
           export TORCH_CUDA_ARCH_LIST="${{ env.TORCH_CUDA_ARCH_LIST }}"
           export CXXFLAGS="-D_GLIBCXX_USE_CXX11_ABI=1"
           pip install --no-build-isolation .
           python setup.py bdist_wheel
-          # Rename wheel with CUDA+PyTorch suffix
           cd dist && for f in *.whl; do mv "$f" "$(echo $f | sed 's/-cp/+cu${{ env.CUDA_SHORT }}torch${{ env.TORCH_MM }}-cp/')"; done && cd ..
           ls -la dist/
 
@@ -118,6 +150,39 @@ jobs:
         run: |
           git config --global url."https://github.com/".insteadOf "git@github.com:"
           git clone https://github.com/microsoft/TRELLIS.2.git --recursive
+
+      - name: Patch postprocess.py for batched BVH queries
+        shell: bash
+        run: |
+          cd TRELLIS.2/o-voxel
+          python << 'PATCH_SCRIPT'
+          import re
+          with open('o_voxel/postprocess.py', 'r') as f:
+              content = f.read()
+          batched_func = '''
+
+          def _batched_unsigned_distance(bvh, positions, batch_size=500000, return_uvw=False):
+              """Batch unsigned_distance queries to avoid GPU kernel timeout. See: https://github.com/PozzettiAndrea/ComfyUI-TRELLIS2/issues/19"""
+              N = positions.shape[0]
+              if N <= batch_size:
+                  return bvh.unsigned_distance(positions, return_uvw=return_uvw)
+              distances_list, face_id_list, uvw_list = [], [], [] if return_uvw else None
+              for i in range(0, N, batch_size):
+                  d, f, u = bvh.unsigned_distance(positions[i:min(i+batch_size, N)], return_uvw=return_uvw)
+                  distances_list.append(d)
+                  face_id_list.append(f)
+                  if return_uvw: uvw_list.append(u)
+              import torch
+              return torch.cat(distances_list), torch.cat(face_id_list), torch.cat(uvw_list) if return_uvw else None
+
+          '''
+          content = re.sub(r'(import cumesh\n)', r'\1' + batched_func, content)
+          content = content.replace('_, face_id, uvw = bvh.unsigned_distance(valid_pos, return_uvw=True)',
+                                    '_, face_id, uvw = _batched_unsigned_distance(bvh, valid_pos, return_uvw=True)')
+          with open('o_voxel/postprocess.py', 'w') as f:
+              f.write(content)
+          print("Patched postprocess.py for batched BVH queries")
+          PATCH_SCRIPT
 
       - name: Patch source for MSVC compatibility
         shell: powershell

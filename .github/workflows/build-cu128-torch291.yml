@@ -57,13 +57,86 @@ jobs:
           pip install --no-cache-dir torch==${{ env.PYTORCH_VERSION }} --index-url https://download.pytorch.org/whl/cu128
           pip install wheel setuptools ninja numpy
 
-      - name: Clone TRELLIS.2 and build o-voxel
+      - name: Clone TRELLIS.2
+        run: |
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          git clone https://github.com/microsoft/TRELLIS.2.git --recursive
+
+      - name: Patch postprocess.py for batched BVH queries
+        run: |
+          # Fix for GitHub issue #19: GLB export hangs at 5/6 "Sampling attributes"
+          # Large meshes (>5M faces) with many query points cause GPU kernel timeout.
+          # This patch adds batched BVH queries to avoid timeout/OOM issues.
+          cd TRELLIS.2/o-voxel
+          python3 << 'PATCH_SCRIPT'
+          import re
+
+          # Read the file
+          with open('o_voxel/postprocess.py', 'r') as f:
+              content = f.read()
+
+          # Define the batched function to insert after imports
+          batched_func = '''
+
+          def _batched_unsigned_distance(bvh, positions, batch_size=500000, return_uvw=False):
+              """
+              Batch unsigned_distance queries to avoid GPU kernel timeout and memory issues.
+
+              Large meshes (>5M faces) with many query points (>1M) can cause GPU watchdog
+              timeout, memory fragmentation, or cache thrashing. This splits queries into
+              smaller batches to avoid these issues.
+
+              See: https://github.com/PozzettiAndrea/ComfyUI-TRELLIS2/issues/19
+              """
+              N = positions.shape[0]
+              if N <= batch_size:
+                  return bvh.unsigned_distance(positions, return_uvw=return_uvw)
+
+              distances_list = []
+              face_id_list = []
+              uvw_list = [] if return_uvw else None
+
+              for i in range(0, N, batch_size):
+                  batch_end = min(i + batch_size, N)
+                  batch_positions = positions[i:batch_end]
+                  d, f, u = bvh.unsigned_distance(batch_positions, return_uvw=return_uvw)
+                  distances_list.append(d)
+                  face_id_list.append(f)
+                  if return_uvw:
+                      uvw_list.append(u)
+
+              distances = torch.cat(distances_list)
+              face_id = torch.cat(face_id_list)
+              uvw = torch.cat(uvw_list) if return_uvw else None
+              return distances, face_id, uvw
+
+          '''
+
+          # Insert the function after 'import cumesh' line
+          content = re.sub(
+              r'(import cumesh\n)',
+              r'\1' + batched_func,
+              content
+          )
+
+          # Replace the direct call with batched version
+          content = content.replace(
+              '_, face_id, uvw = bvh.unsigned_distance(valid_pos, return_uvw=True)',
+              '_, face_id, uvw = _batched_unsigned_distance(bvh, valid_pos, return_uvw=True)'
+          )
+
+          # Write back
+          with open('o_voxel/postprocess.py', 'w') as f:
+              f.write(content)
+
+          print("Patched postprocess.py for batched BVH queries (batch_size=500000)")
+          PATCH_SCRIPT
+
+      - name: Build o-voxel wheel
         env:
           FORCE_CUDA: "1"
           CUDA_HOME: /usr/local/cuda-12.8
         run: |
-          git config --global url."https://github.com/".insteadOf "git@github.com:"
-          git clone https://github.com/microsoft/TRELLIS.2.git --recursive
           cd TRELLIS.2/o-voxel
           # Remove git URL dependencies from pyproject.toml
           # These cause pip to try cloning CuMesh/FlexGEMM even when already installed
@@ -135,6 +208,77 @@ jobs:
         run: |
           git config --global url."https://github.com/".insteadOf "git@github.com:"
           git clone https://github.com/microsoft/TRELLIS.2.git --recursive
+
+      - name: Patch postprocess.py for batched BVH queries
+        shell: bash
+        run: |
+          # Fix for GitHub issue #19: GLB export hangs at 5/6 "Sampling attributes"
+          # Large meshes (>5M faces) with many query points cause GPU kernel timeout.
+          # This patch adds batched BVH queries to avoid timeout/OOM issues.
+          cd TRELLIS.2/o-voxel
+          python << 'PATCH_SCRIPT'
+          import re
+
+          # Read the file
+          with open('o_voxel/postprocess.py', 'r') as f:
+              content = f.read()
+
+          # Define the batched function to insert after imports
+          batched_func = '''
+
+          def _batched_unsigned_distance(bvh, positions, batch_size=500000, return_uvw=False):
+              """
+              Batch unsigned_distance queries to avoid GPU kernel timeout and memory issues.
+
+              Large meshes (>5M faces) with many query points (>1M) can cause GPU watchdog
+              timeout, memory fragmentation, or cache thrashing. This splits queries into
+              smaller batches to avoid these issues.
+
+              See: https://github.com/PozzettiAndrea/ComfyUI-TRELLIS2/issues/19
+              """
+              N = positions.shape[0]
+              if N <= batch_size:
+                  return bvh.unsigned_distance(positions, return_uvw=return_uvw)
+
+              distances_list = []
+              face_id_list = []
+              uvw_list = [] if return_uvw else None
+
+              for i in range(0, N, batch_size):
+                  batch_end = min(i + batch_size, N)
+                  batch_positions = positions[i:batch_end]
+                  d, f, u = bvh.unsigned_distance(batch_positions, return_uvw=return_uvw)
+                  distances_list.append(d)
+                  face_id_list.append(f)
+                  if return_uvw:
+                      uvw_list.append(u)
+
+              distances = torch.cat(distances_list)
+              face_id = torch.cat(face_id_list)
+              uvw = torch.cat(uvw_list) if return_uvw else None
+              return distances, face_id, uvw
+
+          '''
+
+          # Insert the function after 'import cumesh' line
+          content = re.sub(
+              r'(import cumesh\n)',
+              r'\1' + batched_func,
+              content
+          )
+
+          # Replace the direct call with batched version
+          content = content.replace(
+              '_, face_id, uvw = bvh.unsigned_distance(valid_pos, return_uvw=True)',
+              '_, face_id, uvw = _batched_unsigned_distance(bvh, valid_pos, return_uvw=True)'
+          )
+
+          # Write back
+          with open('o_voxel/postprocess.py', 'w') as f:
+              f.write(content)
+
+          print("Patched postprocess.py for batched BVH queries (batch_size=500000)")
+          PATCH_SCRIPT
 
       - name: Patch source for MSVC compatibility
         shell: powershell
